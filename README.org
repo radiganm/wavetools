@@ -1,0 +1,180 @@
+#+TITLE: wavetools
+
+see http://tph.tuwien.ac.at/~oemer/wavetools.html
+
+
+WaveTools v1.0
+==============
+
+
+WaveTools consists of 8 small programs for manipulating mono WAV Files. 
+
+winf	Displays header information of wave-files and optionally 
+	also file statistics.
+
+wcat	Concatenates several wave-files (*.wav) and performs 
+	interpolating conversions of sample rates and sample 
+	depths if necessary.
+
+wcut	Cuts a section out of a wave-file.
+
+wflt	Filter: Performs several transformations on wave-files.
+	(high/low/band-pass, mean value filter)
+
+wfct	Function Generator: Generates wave-files with several
+	functions (sinus, rectangular, triangular, saw-tooth, 
+	noise, impulse)
+
+wmix	Mixes several wave-files (add or modulate).
+
+wview	An interactive SVGALIB viewer.
+
+wplot	Generates a PostScript plot. 
+
+I have written the program library for an audiology project at
+the Technical University of Vienna some years ago as a toolbox
+for generating and preprocessing small test samples, so this
+is probably not for making music with (unless you're doing some
+real hardcore Techno ;-) ); but if you want to write your own 
+effect filters or sound analysis tools and don't want to mess 
+around with format conversions or standard input filters, or
+if you just want to arrange some WAVs for your voice modem,
+you might find this useful.
+
+For a description of all available options, invoke the programs with
+the -h option.
+
+
+Sources and Installation
+------------------------
+
+You can get the latest version of WaveTools from my homepage at 
+http://tph.tuwien.ac.at/~oemer/wavetools.html. 
+
+Unpack the tarball and then do
+
+make 			Executables
+make install		Install to /usr/local/bin
+make doc		Generate (German) Documentation (wdoc.ps)
+make clean		Remove temp. files
+make cleanall		Remove all generated files
+
+If you have any problems / suggestions / comments, feel free, to mail
+me (PGP key at my homepage).
+
+
+General Usage
+-------------
+
+The basic concept of WaveTools is modularity; all programs use
+stdin/stdout as defaults. Consider the following command line:  
+
+  (wfct 800Hz 3s; wfct -i50% 2Hz 3s) | wmix -m - - | \
+  wcat -r11025Hz -b8 -oalarm.wav warning.wav +500ms -
+
+This generates a 800Hz sinus signal of 3 seconds (wfct 800Hz 3s),
+modulated (wmix -m - -) by a 2Hz sinus of amplitude of 1/2 
+(wfct -i50% 2Hz 3s) and prefixes the resulting "alarm" signal by
+the content of warning.wav after performing the appropriate format
+conversion and inserting a pause of 0.5s ( wcat -r11025Hz -b8 
+-oalarm.wav warning.wav +500ms -). The result is then written to
+alarm.wav. If -oalarm.wav is omitted, the result is written to stdout
+and can be piped to /dev/dsp or some other program.
+
+Options
+
+Programs like wflt or wfct have numerous options to modify their
+behaviour. All programs stick to the following conventions:
+
+ - option -h prints a usage message listing all options
+ - option -v produces verbose status messages (written to stderr)
+ - physical quantities as option arguments must be given in 
+   appropriate units (no whitespace allowed)
+ - whenever filenames are expected: - stands for 1 wavefile sent 
+   from stdin (multiple use is allowed, see example above).
+
+Units
+
+The naming of units conforms mainly to the SI standard.
+All units can be prefixed by the decimal multipliers m (milli) = 
+0.001, c (centi) = 0.01, d (deci) = 0.1 k (kilo) = 1000 and K 
+(Kilo) = 1024, so units like kHz, dB or ms can be used directly.
+ 
+ - no dimension: % (percent), B or b (Bel, xB = 10^x), no unit
+   (the following values are therefore the same 10% = -1B = -10dB = 0.1)
+   Note that all amplitude values are mapped onto the interval [-1,1].
+   Amplitude values for functions are always peak values (even if given
+   in dB, so a gain of 1.5dB [not 3dB] is about the double volume)
+ - phases and angles: deg (degree), rad or r (radiants)
+ - time: s (second)
+ - frequency: Hz, hz or h (Hertz), f (sound blaster units = 11025Hz)
+ - length: m (Meter), pt (Points for font sizes = 0.3516mm)
+
+wView
+
+This programs needs the svgalib and runs in the standard 640x480x16 mode
+which should be supported by almost any card. Use cursor keys, Home/End,
+PgUp/PgDn to zoom and navigate and q or ctrl+c (necessary when viewing
+a pipe) to quit.
+
+
+Docs
+----
+
+Besides the -h option and this README, a Latex manual (13 pages) 
+is available, but currently only in a German version (sorry folks,
+maybe some of the examples / formulas / diagrams might help you
+anyway, even if you don't speak German)
+I might consider writing some English man pages for a final version 
+if people have actually use for the program (maybe there are also some 
+volunteers out there ... ;-) ). 
+
+
+Bugs and missing Features
+-------------------------
+ 
+- Missing stereo support
+- No English doc
+- wasteful use of memory (no temp. files)
+- hard wired defaults (edit default.h to change)
+
+If you find some more, please let me know (oemer@tph.tuwien.ac.at).
+
+
+Portability
+-----------
+
+WaveTools have been developed under Linux/gcc, but should compile 
+on any platform with an ANSI C compiler (except wview, of course).
+I've also made a DOS/watcom port (including wview) which is rather
+clumsy to use due to insufficient pipe buffers. 
+After a small bug-fix in the format conversion, it also has been
+reported to run on architectures with don't conform to the Intel
+lo/hi-byte convention.
+
+
+Legal Stuff
+-----------
+
+WaveTools v1.0
+
+Copyright (C) 1994 Bernhard Oemer <oemer@tph.tuwien.ac.at>
+
+These programs are free software; you can redistribute and/or
+modify them under the terms of the GNU General Public License
+as published by the Free Software Foundation; either version 2
+of the License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+
+
+Wien, 17th of May 2000
+
+Bernhard Oemer
+
+
+ # *EOF* 

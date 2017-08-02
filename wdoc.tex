@@ -1,0 +1,697 @@
+
+\documentstyle[12pt,a4,german,epsf]{article}
+
+\def\wavetools{{\sc WaveTools}}
+\def\winf{{\tt winf}}
+\def\wcat{{\tt wcat}}
+\def\wcut{{\tt wcut}}
+\def\wflt{{\tt wflt}}
+\def\wfct{{\tt wfct}}
+\def\wmix{{\tt wmix}}
+\def\wview{{\tt wview}}
+\def\wplot{{\tt wplot}}
+\def\sexp#1{$\langle${\it #1\/}$\rangle$}
+\def\snum#1#2{\rm\##1$_{#2}$}
+\def\btxt{\begin{quote}\raggedright\sloppy\noindent\tt}
+\def\etxt{\end{quote}}
+\def\txt#1{\btxt #1 \etxt}
+\def\txtund{{\rm\qquad und} \newline}
+\def\bs{$\tt\backslash$}
+\def\syntax#1#2{
+  \noindent\begin{tabular}{@{} l @{}}
+    \bf Syntax: 
+    \tt #1 \rm [{\it\ options }\/] #2
+  \end{tabular}
+  \vskip3mm
+}
+\def\options#1{%
+  \noindent\begin{tabular}{@{} l @{\ } l @{\ } l @{\ } l}
+    \bf Options:\rm &#1
+  \end{tabular}
+  \vskip3mm
+}
+\def\opt#1{{\tt -#1}}
+\def\optarg#1#2{{{\tt -#1}\sexp{#2}}}
+\def\multiopt#1{\multicolumn{3}{@{} l @{}}{#1}}
+\def\stdopt{&\multiopt{\optarg{o}{output file}, \opt{h}, \opt{v}}}
+\def\bildbox#1#2#3{
+  \centerline{\fbox{\epsffile{#1}}}
+  \small\caption{\bf #2}\label{#3}
+}
+\def\bild#1#2#3{
+  \begin{figure}[hbt]
+  \bildbox{#1}{#2}{#3}
+  \end{figure}
+}
+\def\bilder#1#2#3#4#5{
+  \begin{figure}[hbt]
+    \hfill
+    \parbox{70mm}{\bildbox{#1}{#2}{#5-a}}
+    \hfill
+    \parbox{70mm}{\bildbox{#3}{#4}{#5-b}}
+    \hfill
+  \end{figure}
+}
+\pagestyle{headings}
+
+\begin{document}
+
+\title{Manual zu \wavetools\ (v 0.9 beta)}
+\author{Bernhard "Omer}
+\date{7. November 1994}
+
+\maketitle
+
+
+\section{Einf"uhrung}
+
+Bei \wavetools\ handelt es sich um eine Sammlung kleinerer Programme
+zur Bearbeitung und graphischen Darstellung von Tondateien im Wave-Format:
+
+\begin{description}\parskip=0pt
+\item[winf] zeigt Header- und statistische Informationen "uber Wave-Files an.
+\item[wcat] dient zum Aneinander"-h"angen und zur Konvertierung von
+Wave-Files.
+\item[wcut] dient zum Ausschneiden von Sequenzen aus Wave-Files.
+\item[wflt] f"uhrt diverse Transformationen und Filterungen durch.
+\item[wfct] ist ein Funktionsgenerator.
+\item[wmix] dient zur "Uberlagerung mehrerer Wave-Files.
+\item[wview] dient zur interaktiven, graphischen Visualisierung.
+\item[wplot] erzeugt ein PostScript-File mit dem Graphen eines Wave-Files.
+\end{description}
+
+Alle diese Programme wurden unter Linux 0.99.14 mit dem GNU C-Compiler
+Version 2.4.5 entwickelt, sollten sich aber, mit Ausnahme von \wview,
+das die Linux SVGA-Library verwendet, mehr oder weniger problemlos
+auch auf andere Systeme portieren lassen. So existiert mittlerweile
+eine DOS Version, die mit dem Watcom Compiler erzeugt wurde.
+
+
+\subsection{Das Wave-Dateiformat}
+
+Das Wave-Format geth"ort zu den RIFF Multi-Media-Formaten und liegt
+zur Zeit nur in einer unkomprimierten Version vor, die sich durch
+ihre einfache sequentielle Anordnung der Daten sehr gut zur 
+automatischen Weiterverarbeitung eignet.
+Obwohl auch Aufzeichnungen in Stereo vorgesehen sind ist im 
+folgenden nur das Mono-Format beschrieben, da nur dieses von 
+\wavetools\ in ihrer derzeitigen Version unterst"utzt wird.
+
+\vskip3mm
+\begin{tabular}{l l l}
+\sexp{wave-file} &=& 
+  {\tt 'RIFF'} \snum{wave-block-length}{32} \sexp{wave-block}
+\\
+\sexp{wave-block} &=&
+  {\tt 'WAVE'} [ \sexp{info-list} ] \sexp{format-block}
+  \sexp{data-block}
+\\
+\sexp{info-list}$_{opt}$ &=& 
+  {\tt 'LIST'} \snum{info-block-length}{32} \sexp{info-block}
+\\
+\sexp{format-block} &=&
+  {\tt 'fmt '} \snum{format-data-length}{32} \sexp{format-data}
+\\
+\sexp{format-data} &=& 
+  \snum{1}{16} \snum{1}{16} \snum{sample-rate}{32}
+  \snum{bytes-per-second}{32} \\
+  & & \snum{bytes-per-sample}{16} \snum{bits-per-sample}{16}
+\\
+\sexp{data-block} &=& 
+  {\tt 'DATA'} \snum{samples-length}{32} \sexp{samples}
+\\
+\sexp{samples} &=& \{ \snum{sample-value}{8\times bytes} \}
+\end{tabular}
+\vskip3mm
+Es bleibt noch zu bemerken, da"s aus unerfindlichen Gr"unden die
+gesamplelten Werte bei einer Wortl"ange von 1 Byte {\tt unsigned}, bei
+gr"o"seren Wortl"angen aber {\tt signed} sind.
+
+
+\subsection{Konzepte und Konventionen}
+
+Das Grundkonzept von \wavetools\ ist es, durch modularen Aufbau und
+freie Kombinierbarkeit von kleineren Grundprogrammen nach dem
+Bausteinprinzip komplexere Transformationen durchzuf"uhren.
+So erzeugt etwa die Befehlsfolge
+
+{\btxt
+  (wfct 800Hz 3s; wfct -i50\% 2Hz 3s) | wmix -m - - | \bs \\*
+  wcat -r11025Hz -b8 -oalarm.wav warning.wav +500ms -
+\etxt} 
+
+\noindent ein 3 Sekunden langes Sinussignal von 800 Hz, multipliziert es
+mit Rechteckimpulsen von 2 Hz und einer Breite von 250 ms, und f"ugt
+das so erzeugte Alarmsignal nach einer Pause von einer halben Sekunde
+an den Inhalt der Datei {\tt warning.wav} an, die zuvor noch auf
+ein Format von 8 bit und eine Sampling-Frequenz von 11025 Hz 
+konvertiert wurde, und schreibt alles in die Datei {\tt alarm.wav}.
+
+\subsubsection{Kombination von Programmen}
+
+Um die Kombination zu vereinfachen, gen"ugen alle Programme den
+folgenden Konventionen:
+
+\begin{itemize}
+\item Ist kein Eingabefile angegeben, so wird der Input von der
+      Standard-Eingabe {\tt stdin} gelesen.
+\item Sind mehrere Eingabefiles m"oglich, so ersetzt ein Bindestrich
+      {\tt -} ein File, das von {\tt stdin} gelesen werden soll.
+\item Alle Programme schreiben erzeugte Files in die Standard-Ausgabe
+      {\tt stdout} um ein ''Pipen'' des Outputs zu erm"oglichen.
+\item Soll ein Ausgabefile erzeugt werden, so mu"s dies explizit
+      durch die Option \optarg{o}{filename} angegeben werden.
+\item Alle Fehler-- oder Statusmeldungen werden in die Fehler-Ausgabe
+      {\tt stderr} geschrieben und daher nicht weitergepiped.
+\end{itemize}
+
+DOS-User m"ussen ihre Beigeisterung "uber diese M"oglichkeiten 
+leider etwas z"ugeln, da DOS Bin"ardateien nicht richtig buffern
+kann. Zum Auslesen des File-Headers reicht es gerade noch, aber
+ansonsten seien DOS-User an das Anlegen tempor"arer Dateien oder an
+ein vern"unftiges Betriebssytem verwiesen.
+
+\subsubsection{Optionen und Parameter}
+
+Programme wie \wflt\ oder \wfct\ verf"ugen "uber eine breite
+Palette von optionalen Parametern und Switches um die Standard-Syntax
+m"oglichst einfach zu halten (Mit Ausnahme von \wfct\ k"onnen alle
+Programme auch ohne Parameter aufgerufen werden.).
+Optionen und Parameter gen"ugen folgenden Konventionen:
+
+\begin{itemize}
+\item Die Option {\tt -h} (help) f"uhrt zur Ausgabe eine
+      {\tt USAGE}-Meldung in der Syntax und Optionen erkl"art werden.
+\item Die Option {\tt -v} (verbose) f"uhrt zur vermehrten Ausgabe
+      von Statusmeldungen.
+\item Physikalische Gr"o"sen wie Zeit oder Frequenz erfordern immer
+      die Angabe einer entsprechenden Einheit, die ohne Leerzeichen
+      an den Zahlenwert anschlie"sen mu"s.
+\item Bei Eingabefiles ist die Angabe der Extention {\tt .wav} optional.
+\end{itemize}
+
+Wieder schlechte Nachrichten f"ur DOS-User: W"ahrend nach den UNIX
+Konventionen Optionen an jeder Stelle in der Parameterliste auftreten
+k"onnen und zwischen Option und Argument Leerzeichen erlaubt sind, so
+hat man sich unter DOS streng an die Befehlssyntax zu halten, also die
+Optionen vor allen anderen Parametern und keine Leerzeichen vor optionalen
+Argumenten.
+
+\subsubsection{Einheiten}
+
+Zur Angabe physikalischer Gr"o"sen stehen folgende Einheiten zur 
+Verf"ugung:
+
+\begin{description}
+\item[Dimensionslose Einheiten:]
+  {\bf \%} (Prozent), 
+  {\bf B} oder {\bf b} (Bel) $=\log_{10}$
+\item[Phasen und Winkel:]
+  {\bf deg} (Grad),
+  {\bf rad} oder {\bf r} (Radianten)
+\item[Zeit:] {\bf s} (Sekunde)
+\item[Frequenz:] 
+  {\bf Hz}, {\bf hz} oder {\bf h} (Hertz),
+  {\bf f} (Basis-Sampling-Frequenz)  $=11025$ Hz
+\item[L"ange:]
+  {\bf m} (Meter),
+  {\bf pt} (Punkt) $=0.3516 $mm 
+  (dient zur Angabe der Schriftgr"o"se bei \wplot )
+\end{description}
+
+Allen diesen Einheiten k"onnen die dekadischen Multiplikatoren 
+{\bf m}~$={1 \over 1000}$, {\bf c}~$={1 \over 100}$, {\bf d}~$={1 \over 10}$,
+{\bf k}~$=1000$ und f"ur Informatiker {\bf K}~$=1024$
+vorangestellt werden.
+
+\subsubsection{Interne Darstellung von Wave-Files}
+
+Unabh"angig von der tats"achlichen Aufl"osung (sample depth) werden
+die digitalisierten Werte der Wave-Files intern als Flie"skommazahlen
+aus dem Intervall $[-1,1)$ dargestellt und nur beim Einlesen bzw. der
+Ausgabe auf die jeweilige Integer-Dastellung umgerechnet. Alle
+Amplitudenangaben der Programme \winf, \wview, \wplot\ und \wfct\
+beziehen sich auf diese interne Darstellung und sind daher f"ur
+jedes Format g"ultig. Ist die Option \opt{v}\ gesetzt, werden etwaige
+"Uberl"aufe vom Programm gemeldet.
+
+Die Programme \wflt, \wmix\ und \wview\ m"ussen Wave-Files in den
+Speicher einlesen bevor sie mit der Ausgabe beginnen k"onnen.
+Bei langen Dateien kann es daher bei Systemen mit wenig 
+Speicherplatz zu Problemen kommen. In diesem Fall mu"s die 
+Eingabe mit \wcut\ auf mehrere Dateien aufgeteilt werden, die
+separat bearbeitet und nachher mit \wcat\ wieder zusammengef"ugt
+werden k"onnen.
+
+
+
+\section{Verarbeitung von Wave-Files}
+
+Zur Erzeugung und/oder Verarbeitung von Wave Dateien dienen die 
+Programme \wcat , \wcut , \wmix , \wflt\ und \wfct . 
+
+
+\subsection{Verkettung (\wcat)}
+
+\syntax{wcat}{[ \sexp{wave-file} $|$ {\tt +}\sexp{pause} ] \ldots}
+
+\options{%
+  \optarg{r}{sample rate} &:& Sampling-Frequenz \\
+  &\optarg{b}{sample depth} &:& Aufl"osung in bit \\ 
+  &\optarg{s}{speed} &:& Abspielgeschwindigkeit \\
+  \stdopt
+}
+
+\wcat\ dient zum Aneinanderh"angen mehrerer Wave-Files und zur
+Formatkonvertierung. Wird mit den Optionen \opt{r} oder \opt{b}
+ein bestimmtes Format vorgegeben, so werden alle Files (und 
+nat"urlich auch etwaige Pausen) wenn n"otig auf dieses Format 
+konvertiert. Ansonsten bestimmt das erste angegebene File das
+Ausgabeformat.
+
+\txt{wcat -r1f -b8 -oVoc8.wav Voc16.wav}
+
+\noindent konvertiert z.B. die Datei {\tt Voc16.wav} auf eine 
+Sampling-Frequenz von 11025 Hz und eine Aufl"osung von 8 bit und 
+erzeugt die Datei {\tt Voc8.wav}.
+
+Wird auf eine h"ohere Sampling-Frequenz konvertiert, so wird 
+zwischen den einzelnen Abtastpunkten linear interpoliert, wodurch
+das Digitalisierungsrauschen gesenkt wird. Bei niedrigeren
+Frequenzen wird "uber das Abtastintervall gemittelt um 
+h"oherfrequente Anteile herauszufiltern.
+Wird auf eine niedrigere Aufl"osung konvertiert, so werden die
+Werte gerundet.
+
+Pausen zwischen Files k"onnen mit {\tt +}\sexp{Dauer} eingef"ugt
+werden. Mit der Option \optarg{s}{speed} kann die 
+Wiedergabegeschwindigkeit ver"andert werden, {\tt -s1} bzw.
+{\tt -s100\%} stehen dabei f"ur die Originalgeschwindigkeit.
+Mit {\tt -s200\%} w"urde demnach eine Datei doppelt so schnell
+abgepielt. Die L"ange der eingef"ugten Pausen "andert sich
+allerdings nicht.
+
+\txt{wcat -s150\% -oMickeyMouse.wav Mickey +500ms Mouse}
+
+\noindent spielt die Dateien {\tt Mickey.wav} und {\tt Mouse.wav}
+mit $1{{1 \over 2}}$-facher Geschwindigkeit ab, verbindet sie
+mit einer Pause von einer halben Sekunde und schreibt das
+Ergebnis in {\tt MickeyMouse.wav}.
+
+
+\subsection{Ausschneiden (\wcut)}
+
+\syntax{wcut}{[\sexp{wave-file}]}
+
+\options{%
+  \multiopt{\optarg{s}{start time}, \optarg{e}{end time}, \optarg{l}{length}} \\
+  \stdopt
+}
+
+\wcut\ dient zum Ausschneiden einer Sequenz aus einem Wave-File.
+Von den drei optionalen Zeitangaben d"urfen h"ochstens zwei 
+verwendet werden. Die Angabe kann dabei in Sekunden aber auch als Nummer
+des jeweiligen Sample-Wertes (ohne Einheit) angegeben werden. Die
+Aufrufe
+
+{\btxt
+  wcut -s400ms -e800ms -oAm.wav WhoAmI.wav \txtund
+  wcut -s4410 -l4410 -oAm.wav WhoAmI.wav
+\etxt}
+
+\noindent sind "aquivalent wenn man annimmt, das das File {\tt WhoAmI.wav}
+mit 11025 Hz gesampled wurde. Werden weniger als zwei Parameter
+angegeben, so gelten folgende Defaults:
+
+{\btxt\rm
+  \sexp{start time} = 0 s \\
+  \sexp{end time} = L"ange des Files
+\etxt}
+
+
+\subsection{Erzeugen (\wfct)}
+
+\syntax{wfct}{\sexp{frequency}\ \sexp{duration}}
+
+\options{%
+  \optarg{s}{sample rate} &:& Sampling-Frequenz (Standard: 11025 Hz) \\
+  &\optarg{b}{sample depth} &:& Aufl"osung (Standard: 8 bit) \\
+  &\optarg{a}{amplitude} &:& Amplitude (Standard: 1 = 100 \%) \\
+  &\optarg{p}{phase} &:& Phasenverschiebung (Standarg 0 rad/deg/\%) \\
+  &\opt{r} &:& Rechteckschwingung \\
+  &\opt{t} &:& Dreieckschwingung \\
+  &\opt{w} &:& S"agezahnschwingung \\
+  &\opt{n} &:& Rauschen \\
+  &\optarg{i}{width} &:& Rechteckimpulse (Breite in s oder \%) \\%
+  \stdopt
+}
+
+Der Funktionsgenerator \wfct\ erzeugt Wave-Files periodischer Funktionen
+mit w"ahlbarer Frequenz und Dauer (beide Angaben m"ussen als regul"are
+Parameter "ubergeben werden.). Ist keine bestimmte Funktion
+angegeben, so wird eine Sinusschwingung erzeugt. Die Aufrufe
+
+{\btxt
+  wfct -oSinus.wav 440Hz 10ms \txtund
+  wfct -t -oDreieck.wav 300Hz 10ms 
+\etxt}
+
+\noindent erzeugen die in Abb. \ref{wfct1-a} und \ref{wfct1-b} dargestellten
+Dateien {\tt Sinus.wav} und {\tt Dreieck.wav}.
+
+\bilder{Sinus.ps}{\tt Sinus.wav}{Dreieck.ps}{\tt Dreieck.wav}{wfct1}
+
+Das Format der Ausgebedatei kann durch die Optionen \opt{s}\ und
+\opt{b}\ festgelegt werden, ansonsten werden die Standardwerte
+(Sampling-Frequenz = 11025~Hz, Aufl"osung = 8 bit) verwendet.
+Werden andere Standardwerte gew"unscht, so sind die Eintr"age in
+der Datei {\tt defaults.h} entsprechend zu "andern und \wfct\ 
+anschlie"send mit {\tt make wfct} neu zu compilieren.
+
+Normalerweise werden Funktionen mit einer Maximalamplitude von 1 und
+einer Phasenverschiebung von $0^{\circ}$ erzeugt. Mit den Optionen
+\opt{a}\ und \opt{p}\ k"onnen andere Werte gew"ahlt werden.
+Die Phase kann dabei in \%\ der Periode oder als Winkel angegeben
+werden. Die Ergebnisse der beiden folgenden Aufrufe sind in
+Abb. \ref{wfct2-a} und \ref{wfct2-b} dargestellt.
+
+{\btxt
+  wfct -r -p90deg -oRechteck.wav 500hz 10ms     \\
+  wfct -i2ms -p60\% -a70\% -oImpuls.wav 100Hz 10ms
+\etxt}
+
+\bilder{Rechteck.ps}{\tt Rechteck.wav}{Impuls.ps}{\tt Impuls.wav}{wfct2}
+
+
+\subsection{Mischen (\wmix)}
+
+\syntax{wmix}{sexp{wave-file} \ldots}
+
+\options{%
+  \opt{n} &:& Normiere das erzeugte File (Setze Maximum auf 1) \\
+  &\opt{s} &:& Multipliziere jedes der $n$ Files mit $1 \over n$ \\
+  &\opt{m} &:& Multiplikation statt Addition der Eingabefiles \\%
+  \stdopt
+}
+
+\wmix\ dient zum Mischen -- genauer gesagt zum Addieren bzw. (mit der
+Option \opt{m}) zum Multiplizieren -- mehrerer Wave-Files.
+Wird \wmix\ ohne Optionen aufgerufen, so werden alle angegebenen
+Wave-Files addiert und -- falls der Dynamikbereich "ubersteuert
+wurde -- normiert d.h. die Ausgabedatei wird geeignet multipliziert,
+soda"s die maximale Amplitude noch darstellbar ist. Mit der
+Option \opt{n}\ kann dies in jedem Fall erzwungen werden.
+Eine andere Art "Ubersteuerungen von vornherein zu vermeiden ist
+die Option \opt{s}\ (scale), bei der die Ausgabedatei durch die
+Anzahl der eingelesenen Dateien dividiert wird. 
+Diese Option ist beim Multiplizieren von Wave-Files mit \opt{m}\ 
+unn"otig, da hierbei ohnehin keine "Uberl"aufe auftreten l"onnen.
+(Es sei daran erinnert, da"s in der internen Darstellung alle
+Amplituden auf das Intervall $[-1,1)$ abgebildet werden.)
+Die Aufrufe
+
+{\btxt
+  (wfct 410Hz 1s; wfct 390Hz 1s) | wmix -s - - \txtund 
+  (wfct 400Hz 1s; wfct -p90deg 10Hz 1s) | wmix -m - - 
+\etxt}
+
+\noindent sind, wenn man von Rundungsfehlern absieht, "aquivalent
+und schreiben die gleichen Dateien nach {\tt stdin}, da gilt:
+  {$$ {1 \over 2} \, (\sin \alpha + \sin \beta) = 
+  \sin {\alpha + \beta \over 2} \cos {\alpha - \beta \over 2}
+  \quad\mbox{und}\quad
+  \sin \left(x+{\pi \over 2}\right) = \cos x $$}
+\noindent Die ersten 100 ms der erzeugten Datei sind in Abb. \ref{wmix}\ 
+dargestellt.
+
+\bild{Schwebung.ps}{Schwebung}{wmix}
+
+
+\subsection{Filtern (\wflt)}
+
+\syntax{wflt}{[ \sexp{wave-file} ]}
+
+\options{%
+  \optarg{m}{width} &:& Mittelwertfilter \\
+  &\optarg{l}{frequency} &:& Tiefpa"sfilter \\
+  &\optarg{f}{frequency} &:& Hochpa"sfilter \\
+  &\optarg{b}{frequency} &:& Bandpa"sfilter \\
+  &\optarg{w}{frequency} &:& Breite des Bandpasses (nur mit Opt. \opt{b}) \\
+  &\optarg{g}{gain} &:& Verst"arkung \\
+  &\optarg{a}{bias} &:& Verschiebung des Nullpunktes \\
+  &\opt{c} &:& Zentrieren der erzeugeten Datei \\
+  &\opt{n} &:& Normalisieren der erzeugten Datei \\
+  &\opt{r} &:& Datei verkehrt abspielen \\
+  &\opt{i} &:& Datei invertieren \\%
+  \stdopt
+}
+
+\wflt\ erm"oglicht eine breite Palette von beliebig kombinierbaren 
+Transformationen, die in der oben angef"uhrten Reihenfolge
+angewendet werden. Alle Frequenzangaben sowie die Angabe der Breite
+des Mittelwertfilters k"onnen direkt als Frequenz in Hz, 
+als Periodendauer in s, oder als Anzahl der Sample-Werte, die
+einer Periode entsprechen (keine Einheit), angegeben werden.
+F"ur eine Datei mit einer Sample-Frequenz von 11025 Hz sind demnach
+die Frequenz-Parameter {\tt 2205Hz}, {\tt 0.4531ms} und {\tt 5}
+"aquivalent.
+
+In den folgenden Funktionsbeschreibungen stellt $x$ immer die
+Datei vor, und $y$ die Datei nach der jeweiligen Transformation dar.
+Indizes beziehen sich auf die jeweilige Fileposition ($x_i$ 
+entspricht demnach dem $i$-ten Sample-Wert). Der 
+Differenz-Operator $\Delta$ sei definiert als $\Delta x = x_i - x_{i-1}$.
+Weiters seien $f_s$ bzw. $\omega_s = 2 \pi f_s$ und $T_s = {1\over f_s}$ 
+Sampling-Frequenz bzw. Kreisfrequenz und Tastperiode.
+
+\subsubsection{Frequenzfilter}
+
+Mit Ausnahme des Mittelwertfilters sind alle implementierten 
+Frequenzfilter (Optionen \opt{l}, \opt{f} und \opt{b}) den
+jeweiligen elektronischen Grundschaltungen (RC, RL und
+RCL-Glied) nachempfunden und als Differenzengleichungen
+mittels Rekursion implementiert. Um die Genauigkeit zu erh"ohen
+und um bei Filterfrequenzen gr"o"ser als $f_s\over 2 \pi$ ein
+"Uberschwingen zu vermeiden, wird $\Delta t = {4\over f_s}$
+als Schrittweite verwendet und zwischen zwei Sample-Werten
+linear interpoliert. Nichtsdestoweniger bleiben 
+Filterfrequenzen gr"o"ser als ${1\over 2}f_s$ sinnlos, da diese
+nicht mehr darstellbar sind (Digitalisierungsrauschen).
+
+In Tabelle \ref{tab1}\ sind die mathematischen Definitionen der
+einzelnen Filter sowie ihre Diskretisierungen angegeben. 
+$f_0 = {1\over t_0} = {f_s \over n} = {\omega_0 \over 2 \pi}$
+steht dabei f"ur die jeweilige Filterfrequenz. Im Falle des
+Bandpasses (\opt{b}) gibt $w = {\Gamma \over 2 \pi}$ die Breite des
+Bandpasses an; ist diese nicht mit der Option \opt{w}
+angegeben so wird sie standardm"a"sig auf $w = {1\over 2} f_0$
+gesetzt. Der Wert der Normierungskonstante $ N = T_s \Gamma
+\sqrt{4 \omega_0^2-\Gamma^2}$ ist so gew"ahlt, da"s die 
+maximale Verst"arkung einer Sinus-Schwingung genau 1 ergibt.
+Anfangswerte ($y_0$) und undefinierte Randwerte (z.B. $x_{-1}$) 
+sind auf 0 gesetzt.
+
+\begin{figure}[hbt]\label{tab1}\small\centerline{\fbox{
+$\begin{array}{l @{\hspace{3mm}} l @{\;\iff\;} l}
+  \mbox{Mittelwertfilter} &
+    y(t)={1\over t}\int_{t-{t_0\over 2}}^{t+{t_0\over 2}}x(\tau)\,d\tau &
+    y_i={1\over n}\sum_{j=i-{n\over 2}}^{i+{n\over 2}}x_j \\
+  \mbox{Tiefpa"s} &
+    {dy\over dt}=\omega (x-y) &
+    y_i=y_{i-1}+T_s \omega_0 (x_i-y_i) \\
+  \mbox{Hochpa"s} &
+    \omega_0 y={dx\over dt}-{dy\over dt} &
+    y_i=y_{i-1}+\Delta \, x-T_s \omega_0 \\
+  \mbox{Bandpa"s} &
+    {d^2 y\over d t^2} + 2 \Gamma \, {dy\over dt}+ \omega_0^2 y=x &
+    \Delta^2 \, y = - 2 T_s \Gamma \, \Delta \, y - T_s^2 \omega_0^2 y + N \, x
+\end{array}$
+}}
+\small\caption{\bf Frequenzfilter}
+\end{figure}
+
+Die folgenden Aufrufe wenden jeden der vier Filter auf die Datei {\tt Impuls.wav}
+aus Abb. \ref{wfct2-b}\ an. Abb. \ref{wflt1-a}\ -- \ref{wflt2-b}\ zeigen
+die Ausgaben der Aufrufe.
+
+{\btxt
+   wflt -m1kHz -oMeanvalue.wav Impuls.wav  \\
+   wflt -l200Hz -oLowpass.wav Impuls.wav    \\
+   wflt -f200Hz -oHighpass.wav Impuls.wav   \\
+   wflt -b200Hz -oBandpass.wav Impuls.wav   
+\etxt}
+
+\bilder{Meanvalue.ps}{Mittelwertfilter 1 kHz}
+       {Lowpass.ps}{Tiefpa"s 200 Hz}{wflt1}
+\bilder{Highpass.ps}{Hochpa"s 200 Hz}
+       {Bandpass.ps}{Bandpa"s 200 Hz}{wflt2}
+
+Wie anhand der Abbildungen leicht zu erkennen ist, verschiebt der
+Tiefpa"s die Phase nach hinten, der Hochpa"s nach vor w"ahrend sie
+der Mittelwertfilter unver"andert l"a"st. 
+
+Die Frequenzg"ange, also die Verh"altnisse zwischen Eingangs- und
+Ausgangsamplituden einer angelegten Sinusschwingung der Kreisfrequenz 
+$\omega$, von Tief-, Hoch- und Bandpa"s sind in Tabelle 
+\ref{tab2} angegeben. 
+
+\begin{figure}[hbt]\label{tab2}\centerline{\fbox{
+$\begin{array}{l @{\hspace{6mm}} l @{\;:\;} l}
+  \mbox{Tiefpa"s} & 
+    1 & {1\over \sqrt{1+{\omega^2 \over \omega_0^2}}} \\[2mm]
+  \mbox{Hochpa"s} &
+    1 & {1\over \sqrt{1+{\omega_0^2 \over \omega^2}}} \\[2mm]
+  \mbox{Bandpa"s} &
+    1 & \Gamma {\sqrt{4 \omega_0^2-\Gamma^2 
+        \over (\omega_0^2-\omega^2)^2+4 \Gamma^2 \omega^2}} \\[2mm]
+\end{array}$
+}}
+\small\caption{\bf Frequenzg"ange}
+\end{figure}
+
+F"ur den Fall einer Filterfrequenz von 1000 Hz sind die Frequenzg"ange
+in den Abb. \ref{freq1-a} -- \ref{freq2} graphisch dargestellt.
+
+\bilder{low1000.ps}{Frequenzgang TP}
+       {high1000.ps}{Frequenzgang HP}{freq1}
+\bild{bnd1k200.ps}{Frequenzgang BP}
+       {freq2}
+
+\subsubsection{Lineare Transformationen}
+
+Mittels der Optionen \optarg{g}{gain} und \optarg{a}{bias} kann eine
+einfache lineare Transformation der Form $y=gain \times x+ bias$
+durchgef"uhrt werden. Wird die Option \opt{c} gew"ahlt, so wird
+\sexp{bias} automatisch so gew"ahlt, da"s der
+Durchschnittswert $\bar{a}=0$. Die Option \opt{y} normiert die
+erzeugte Datei soda"s $\max y = -\min y = 1$.
+Werden die Optionen \opt{c} und \opt{n} gemeinsam verwendet,
+so wird der Output bei maximaler Aussteuerung zentriert, also
+$\bar{a} = 0 \wedge ( \max y = 1 \vee \min y = -1)$.
+
+Die Option \opt{r} vertauscht die Reihenfolge der $y_i$, spielt
+also die Datei verkehrt ab. Die Option \opt{i} negiert alle
+Werte ($y = -x$).
+
+
+
+\section{Auswertung und Visualisierung von Wave-Files}
+
+Im Gegensatz zu den bisher erw"ahnten Programmen erzeugen
+\winf, \wview\ und \wplot\ keine Wave-Files, sondern informieren
+"uber deren Inhalt.
+
+
+\subsection{Textuelle Information (\winf)}
+
+\syntax{winf}{[ \sexp{wave-file} ] \ldots}
+
+\options{%
+  \multiopt{\opt{s} : Statistik, \opt{h}, \opt{v}}
+}
+
+Ohne Optionen aufgerufen, gibt \winf\ die Header-Information der
+angegebenen Dateien aus (L"ange, Sampling-Frequenz und Aufl"osung).
+Der Aufruf
+
+\txt{winf Sinus Schwebung}
+
+\noindent liefert die folgenden Informationen:
+
+{\btxt\footnotesize\tt
+Sinus\ \ \ \ : time 0:00.01 s (\ \ 110 values), sampling 11025 Hz 8 bits \\
+Schwebung: time 0:01.00 s (11025 values), sampling 11025 Hz 8 bits
+\etxt}
+
+Die Option \opt{s}\ f"uhrt dazu, da"s die ganze Datei (nicht nur der
+Header) gelesen wird und einige statistische Informationen 
+ausgegeben werden.
+
+\txt{winf Dreieck.wav {\qquad\rm liefert}}
+{\btxt\footnotesize\tt
+Dreieck.wav: time 0:00.01 s (110 values), sampling 11025 Hz 8 bits \\
+\ \ Amplitude (x[n])\ \ : min = -1.00000  mid = -0.00426  max = +0.99219 \\
+\ \ Step (x[n+1]-x[n]): min = -0.43750  mid = +0.10518  max = +0.43750 \\
+\ \ Zero Values\ \ \ \ \ \ \ : n =\ \ \ \ \ \ \ 5\ \ n/sec = \  501.1 \\
+\ \ Extreme Values \ \ \ : n =\ \ \ \ \ \ \ 6\ \ n/sec = \  601.4 \\
+\ \ Standard Deviation (Volume): s = 0.91054 = 128.8 \%
+\etxt}
+
+{\tt min}, {\tt mid} und {\tt max} in der ersten Zeile liefern den Minimal-,
+Mittel- und Maximalwert der Amplitude (x). In der zweiten Zeile
+stehen die gleichen Angaben f"ur die Amplituden"anderung 
+($\Delta \, x$), wobei bei {\tt mid} "uber den Bertrag von 
+$\Delta \, x$ gemittelt wurde. Die n"achsten beiden Zeilen enhalten
+die Anzahl der Nulldurchg"ange und Extremata, sowohl absolut als auch
+pro Sekunde. Die letzte Zeile enth"alt noch die Standardabweichung
+($\sigma=\sqrt{{1\over n}\sum (x-\bar{x})^2}$) sowie die auf
+Sinus geeicht Lautst"arke ($\sqrt{2} \sigma$) in Prozent.
+
+
+\subsection{Interaktive Graphische Darstellung (\wview)}
+
+\syntax{wview}{[ \sexp{wave-file} ]}
+
+\options{\multiopt{\opt{h}, \opt{v}}}
+
+\wview\ zeigt Wave-Files mittels der Linux SVGA-Library interakiv
+am Bildschirm an. Der Bildschirm besteht aus drei Teilen, der
+Kopfzeile mit den Header-Informationen (siehe \winf), dem Zoom-Fenster
+mit Raster und Skalierung sowie dem Positions-Fenster, in dem die
+ganze Datei dargestellt und der gerade gezoomte Teil wei"s
+hervorgehoben ist.
+
+Die Bedienung von \wview\ ist denkbar einfach: Die Tasten 
+{\tt Left} und {\tt Right}, {\tt Home} und {\tt End} dienen 
+zum Verschieben des Zoom-Fensters, {\tt Up}, {\tt Down}, 
+{\tt PageUp} und {\tt PageDown} zum Zoomen ({\tt Up} erh"oht
+dabei die Aufl"osung, {\tt Down} senkt sie).
+Mit der Taste {\tt Q} oder mit {\tt Ctrl+C} kann \wview\ wieder
+verassen werden (Letzteres ist besonders wichtig, da die 
+VGA-Library beim ''Pipen'' des Inputs keine anderen Tastendr"ucke
+ans Programm meldet.).
+
+
+\subsection{Plotten (\wplot)}
+
+\syntax{wplot}{[ \sexp{wave-file} ]}
+
+\options{%
+  \multiopt{\optarg{s}{start time}, \optarg{e}{end time}, \optarg{l}{length}} \\
+  &\opt{t} &:& Echte Zeit-Skala \\
+  &\optarg{w}{width} &:& Breite der Graphik \\
+  &\optarg{f}{size} &:& Schriftgr"o"s in Punkten \\%
+  \stdopt
+}
+
+\wplot\ erm"oglicht durch die Erzeugung von PostScript-Files
+die Ausgabe von Wave-Dateien am Drucker und das Einbinden von
+Graphen in Dokumente (wie auch in dieses Manual).
+Die erzeugten PostScript-Files sind vom selben Format wie die
+2-D-Plots von Mathematica (PS-Adobe-2.0), mit dem Unterschied,
+da"s bei von \wplot\ erzeugten Files der BoundingBox-Kommentar,
+der zur korrekten Einbindung von Graphiken in Dokumente 
+ben"otigt wird, mit der tats"achlichen Gr"o"se der Graphik
+"ubereinstimmt und nicht mit dem US-Letter Format.
+
+Die Optionen \optarg{s}{start time}, \optarg{e}{end time} und
+\optarg{l}{length} legen den zu plottenden Ausschnitt des
+Wave-Files fest und funktionieren genauso wie bei \wcut.
+Normalerweise beginnt unabh"angig von der gew"ahlten Startzeit
+die Skalierung der Zeit-Achse immer mit 0 s. Soll die
+tats"achliche File-Position angegeben werden, kann dies mit
+Option \opt{t}\ erreicht werden.
+
+Die Optionen \optarg{w}{width} und \optarg{f}{size} legen Breite
+und Schriftgr"o"se der erzeugten Graphik fest; Abb. \ref{wmix}
+wurde zum Beispiel mit dem Aufruf
+
+\txt{wplot -w10cm -f10pt -l100ms -oSchwebung.ps Schwebung.wav}
+
+\noindent erzeugt, wobei die Angabe der \opt{w} und \opt{f}
+Parameter in diesem Fall "uberfl"ussig ist, da sie genau
+den in {\tt defaufts.h} definierten Standardwerten entsprechen,
+die aber wie bei \wfct\ leicht ver"andert werden k"onnen.
+
+
+\end{document}
